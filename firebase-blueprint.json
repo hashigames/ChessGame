@@ -1,0 +1,204 @@
+{
+  "entities": {
+    "UserSettings": {
+      "title": "User Settings",
+      "description": "Custom game settings including custom model IDs and theme preferences for the chess game.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the authenticated user who owns these settings.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "theme": {
+          "type": "string",
+          "description": "Selected 3D environment theme.",
+          "enum": ["park", "cemetery", "temple", "underworld", "heaven", "snow"],
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "gameName": {
+          "type": "string",
+          "description": "Custom display title for the chess game.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "boardSize": {
+          "type": "number",
+          "description": "Board dimension between 8 and 20."
+        },
+        "aiLevel": {
+          "type": "number",
+          "description": "AI difficulty level between 1 and 4."
+        },
+        "musicVolume": {
+          "type": "number",
+          "description": "Background music volume between 0 and 1."
+        },
+        "musicMuted": {
+          "type": "boolean",
+          "description": "Whether background music is muted."
+        },
+        "selectedTrackId": {
+          "type": "string",
+          "description": "Identifier of the selected soundtrack.",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "pieceNames": {
+          "type": "object",
+          "description": "Custom display names for each of the 6 chess piece types."
+        },
+        "pieceWeapons": {
+          "type": "object",
+          "description": "Custom weapon names for each of the 6 chess piece types."
+        },
+        "pieceModelRefs": {
+          "type": "object",
+          "description": "Mapping of PieceType to object containing reference IDs for dataUrl, mapUrl, normalMapUrl, roughnessMapUrl, metalnessMapUrl, and emissiveMapUrl."
+        },
+        "pieceGlbUrls": {
+          "type": "object",
+          "description": "Mapping of piece type and side keys to Cloudflare R2 .glb model URLs."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when settings were last saved."
+        }
+      },
+      "required": [
+        "ownerId",
+        "theme",
+        "gameName",
+        "boardSize",
+        "aiLevel",
+        "musicVolume",
+        "musicMuted",
+        "selectedTrackId",
+        "pieceNames",
+        "pieceWeapons",
+        "pieceModelRefs",
+        "pieceGlbUrls",
+        "updatedAt"
+      ]
+    },
+    "FileMetadata": {
+      "title": "File Metadata",
+      "description": "Metadata for segmented large 3D model and texture files stored across chunk documents.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the user who owns this file.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Original or generated asset filename.",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "fileType": {
+          "type": "string",
+          "description": "Type of 3D asset stored.",
+          "enum": ["3d_file", "texture"],
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "totalChunks": {
+          "type": "number",
+          "description": "Total number of sequential chunks comprising the file (1 to 500)."
+        },
+        "status": {
+          "type": "string",
+          "description": "Upload lifecycle status (uploading -> ready).",
+          "enum": ["uploading", "ready"],
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when file upload was initiated."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when file metadata was last updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "fileType",
+        "totalChunks",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "FileChunk": {
+      "title": "File Chunk",
+      "description": "A single base64 chunk of raw data for a segmented 3D mesh or texture file.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the user who owns the parent file.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fileId": {
+          "type": "string",
+          "description": "Document ID of the parent FileMetadata record.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "chunkIndex": {
+          "type": "number",
+          "description": "Zero-based index of this chunk."
+        },
+        "data": {
+          "type": "string",
+          "description": "Raw base64 slice string (max 500,000 characters).",
+          "minLength": 1,
+          "maxLength": 500000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the chunk was written."
+        }
+      },
+      "required": [
+        "ownerId",
+        "fileId",
+        "chunkIndex",
+        "data",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/settings/{settingId}": {
+      "schema": "UserSettings",
+      "description": "The user's game settings and custom 3D model assignments (e.g. settingId = 'current')."
+    },
+    "/users/{userId}/files/{fileId}": {
+      "schema": "FileMetadata",
+      "description": "Metadata for 3D model meshes and PBR texture map files uploaded by the user."
+    },
+    "/users/{userId}/files/{fileId}/chunks/{chunkId}": {
+      "schema": "FileChunk",
+      "description": "Individual 450KB slices of a single 3D mesh or texture dataUrl."
+    }
+  }
+}

@@ -1,0 +1,221 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net (Default Deny Catch-All)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function getParentFile(userId, fileId) {
+      return get(/databases/$(database)/documents/users/$(userId)/files/$(fileId));
+    }
+
+    function isParentFileOwnedByCaller(userId, fileId) {
+      return getParentFile(userId, fileId).data != null
+        && (!('ownerId' in getParentFile(userId, fileId).data) || getParentFile(userId, fileId).data.ownerId == request.auth.uid);
+    }
+
+    // 3. Entity Validation Blueprints (Anti-Update-Gap)
+    function isValidPieceStringMap(m) {
+      return m is map
+        && m.keys().hasAll(['pawn', 'rook', 'knight', 'bishop', 'queen', 'king'])
+        && m.keys().hasOnly(['pawn', 'rook', 'knight', 'bishop', 'queen', 'king'])
+        && m.pawn is string && m.pawn.size() >= 1 && m.pawn.size() <= 50
+        && m.rook is string && m.rook.size() >= 1 && m.rook.size() <= 50
+        && m.knight is string && m.knight.size() >= 1 && m.knight.size() <= 50
+        && m.bishop is string && m.bishop.size() >= 1 && m.bishop.size() <= 50
+        && m.queen is string && m.queen.size() >= 1 && m.queen.size() <= 50
+        && m.king is string && m.king.size() >= 1 && m.king.size() <= 50;
+    }
+
+    function isValidUserSettings(data, userId) {
+      return data is map
+        && data.keys().hasAll([
+          'ownerId', 'theme', 'gameName', 'boardSize', 'aiLevel',
+          'musicVolume', 'musicMuted', 'selectedTrackId',
+          'pieceNames', 'pieceWeapons', 'pieceModelRefs', 'pieceGlbUrls', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'theme', 'gameName', 'boardSize', 'aiLevel',
+          'musicVolume', 'musicMuted', 'selectedTrackId',
+          'pieceNames', 'pieceWeapons', 'pieceModelRefs', 'pieceGlbUrls', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128
+        && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId == request.auth.uid
+        && data.ownerId == userId
+        && data.theme is string && data.theme.size() >= 1 && data.theme.size() <= 32
+        && data.theme in ['park', 'cemetery', 'temple', 'underworld', 'heaven', 'snow']
+        && data.gameName is string && data.gameName.size() >= 1 && data.gameName.size() <= 100
+        && data.boardSize is number && data.boardSize >= 8 && data.boardSize <= 20
+        && data.aiLevel is number && data.aiLevel >= 1 && data.aiLevel <= 4
+        && data.musicVolume is number && data.musicVolume >= 0 && data.musicVolume <= 1
+        && data.musicMuted is bool
+        && data.selectedTrackId is string && data.selectedTrackId.size() >= 1 && data.selectedTrackId.size() <= 100
+        && data.selectedTrackId.matches('^[a-zA-Z0-9_\\-]+$')
+        && isValidPieceStringMap(data.pieceNames)
+        && isValidPieceStringMap(data.pieceWeapons)
+        && data.pieceModelRefs is map && data.pieceModelRefs.size() <= 6
+        && data.pieceModelRefs.keys().hasOnly(['pawn', 'rook', 'knight', 'bishop', 'queen', 'king'])
+        && data.pieceGlbUrls is map && data.pieceGlbUrls.size() <= 32
+        && data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    function isValidFileMetadata(data, userId) {
+      return data is map
+        && data.keys().hasAll(['ownerId', 'name', 'fileType', 'totalChunks', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'name', 'fileType', 'totalChunks', 'status', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128
+        && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId == request.auth.uid
+        && data.ownerId == userId
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 200
+        && data.fileType is string && data.fileType.size() >= 1 && data.fileType.size() <= 32
+        && data.fileType in ['3d_file', 'texture']
+        && data.totalChunks is int && data.totalChunks >= 1 && data.totalChunks <= 500
+        && data.status is string && data.status.size() >= 1 && data.status.size() <= 32
+        && data.status in ['uploading', 'ready']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    function isValidFileChunk(data, userId, fileId) {
+      return data is map
+        && data.keys().hasAll(['ownerId', 'fileId', 'chunkIndex', 'data', 'createdAt'])
+        && data.keys().hasOnly(['ownerId', 'fileId', 'chunkIndex', 'data', 'createdAt'])
+        && data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128
+        && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId == request.auth.uid
+        && data.ownerId == userId
+        && data.fileId is string && data.fileId.size() >= 1 && data.fileId.size() <= 128
+        && data.fileId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.fileId == fileId
+        && data.chunkIndex is int && data.chunkIndex >= 0 && data.chunkIndex < 500
+        && data.data is string && data.data.size() >= 1 && data.data.size() <= 500000
+        && data.createdAt is timestamp && data.createdAt == request.time;
+    }
+
+    // 4. Collection Match Blocks
+    match /users/{userId}/settings/{settingId} {
+      allow get: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(settingId)
+        && (resource == null || !('ownerId' in existing()) || existing().ownerId == request.auth.uid);
+
+      allow list: if isOwner(userId)
+        && existing().ownerId == request.auth.uid;
+
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(settingId)
+        && isValidUserSettings(incoming(), userId);
+
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(settingId)
+        && isValidUserSettings(incoming(), userId)
+        && (!('ownerId' in existing()) || incoming().ownerId == existing().ownerId)
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'ownerId', 'theme', 'gameName', 'boardSize', 'aiLevel',
+            'musicVolume', 'musicMuted', 'selectedTrackId',
+            'pieceNames', 'pieceWeapons', 'pieceModelRefs', 'updatedAt'
+          ])
+        );
+
+      allow delete: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(settingId)
+        && (!('ownerId' in existing()) || existing().ownerId == request.auth.uid);
+    }
+
+    match /users/{userId}/files/{fileId} {
+      allow get: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(fileId)
+        && (resource == null || !('ownerId' in existing()) || existing().ownerId == request.auth.uid);
+
+      allow list: if isOwner(userId)
+        && existing().ownerId == request.auth.uid;
+
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(fileId)
+        && isValidFileMetadata(incoming(), userId)
+        && incoming().status == 'uploading'
+        && incoming().createdAt == request.time;
+
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(fileId)
+        && isValidFileMetadata(incoming(), userId)
+        && existing().status == 'uploading'
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && (
+          // Action: Finalize File Upload (Terminal State Transition uploading -> ready)
+          incoming().status == 'ready'
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+        );
+
+      allow delete: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(fileId)
+        && (!('ownerId' in existing()) || existing().ownerId == request.auth.uid);
+
+      match /chunks/{chunkId} {
+        allow get: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(fileId)
+          && isValidId(chunkId)
+          && isParentFileOwnedByCaller(userId, fileId);
+
+        allow list: if isOwner(userId)
+          && existing().ownerId == request.auth.uid;
+
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(fileId)
+          && isValidId(chunkId)
+          && isValidFileChunk(incoming(), userId, fileId)
+          && getParentFile(userId, fileId).data.ownerId == request.auth.uid
+          && getParentFile(userId, fileId).data.status == 'uploading'
+          && incoming().chunkIndex < getParentFile(userId, fileId).data.totalChunks;
+
+        allow update: if false;
+
+        allow delete: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(fileId)
+          && isValidId(chunkId)
+          && (!('ownerId' in existing()) || existing().ownerId == request.auth.uid)
+          && isParentFileOwnedByCaller(userId, fileId);
+      }
+    }
+  }
+}

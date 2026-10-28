@@ -1,0 +1,8 @@
+{
+  "name": "Chess Prototype Game",
+  "description": "A high-fidelity 3D AI Chess game with customizable environments, variable board sizes, and a Street Fighter style combat system with LightHouse integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
